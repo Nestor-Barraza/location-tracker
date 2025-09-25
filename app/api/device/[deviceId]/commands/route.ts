@@ -1,66 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { userQueries, deviceCommands, connectedDevices } from '../../../../../lib/db';
 
-const { database } = require('../../../../../lib/postgres');
-
-interface DeviceCommand {
-  id: number;
-  command_type: string;
-  command_data: Record<string, unknown>;
-  created_at: string;
+interface RouteParams {
+  params: {
+    deviceId: string;
+  };
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { deviceId: string } }
-) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const deviceId = params.deviceId;
+    const { deviceId } = params;
 
-    if (!deviceId) {
-      return NextResponse.json(
-        { error: 'Device ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await database.pool.connect();
-    try {
-      const deviceExists = await client.query(
-        'SELECT id FROM devices WHERE device_id = $1 AND is_active = true',
-        [deviceId]
-      );
-
-      if (deviceExists.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Device not found or inactive' },
-          { status: 404 }
-        );
+    await userQueries.updateDeviceLastSeen(deviceId);
+    
+    if (connectedDevices.has(deviceId)) {
+      const device = connectedDevices.get(deviceId);
+      if (device && typeof device === 'object') {
+        (device as Record<string, unknown>).last_seen = Date.now();
       }
-
-      const commands = await client.query(
-        'SELECT id, command_type as action, command_data, created_at FROM device_commands WHERE device_id = $1 AND status = $2 ORDER BY created_at ASC',
-        [deviceId, 'pending']
-      );
-
-      const formattedCommands = commands.rows.map((cmd: DeviceCommand) => ({
-        id: cmd.id,
-        action: cmd.command_type,
-        ...cmd.command_data,
-        created_at: new Date(cmd.created_at).getTime(),
-        processed: false
-      }));
-
-      await client.query(
-        'UPDATE devices SET last_seen = CURRENT_TIMESTAMP WHERE device_id = $1',
-        [deviceId]
-      );
-
-      return NextResponse.json({
-        commands: formattedCommands
-      });
-    } finally {
-      client.release();
     }
+    
+    const commands = deviceCommands.get(deviceId) || [];
+    
+    return NextResponse.json({ commands });
   } catch (error) {
     console.error('Error fetching device commands:', error);
     return NextResponse.json(

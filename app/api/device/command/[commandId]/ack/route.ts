@@ -1,51 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { deviceCommands, type DeviceCommand } from '../../../../../../lib/db';
 
-const { database } = require('../../../../../../lib/postgres');
+interface RouteParams {
+  params: {
+    commandId: string;
+  };
+}
 
-interface AcknowledgeRequest {
+interface AckRequest {
   device_id: string;
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { commandId: string } }
-) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const commandId = params.commandId;
-    const { device_id }: AcknowledgeRequest = await request.json();
-
-    if (!commandId || !device_id) {
-      return NextResponse.json(
-        { error: 'Command ID and Device ID are required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await database.pool.connect();
-    try {
-      const result = await client.query(
-        'UPDATE device_commands SET status = $1, executed_at = CURRENT_TIMESTAMP WHERE id = $2 AND device_id = $3',
-        ['executed', commandId, device_id]
-      );
-
-      if (result.rowCount === 0) {
-        return NextResponse.json(
-          { error: 'Command not found' },
-          { status: 404 }
-        );
+    const { commandId } = params;
+    const { device_id }: AckRequest = await request.json();
+    
+    if (deviceCommands.has(device_id)) {
+      const commands = deviceCommands.get(device_id);
+      if (commands) {
+        const index = commands.findIndex((cmd: DeviceCommand) => cmd.id === commandId);
+        if (index !== -1) {
+          commands.splice(index, 1);
+          console.log(`Command ${commandId} acknowledged by ${device_id}`);
+        }
       }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Command acknowledged'
-      });
-    } finally {
-      client.release();
     }
+    
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error acknowledging command:', error);
     return NextResponse.json(
-      { error: 'Error acknowledging command' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { compare } from 'bcrypt';
-
-const { database } = require('../../../lib/postgres');
+import { userQueries } from '../../../lib/db';
 
 interface LoginRequest {
   username: string;
   password: string;
-}
-
-interface User {
-  id: number;
-  username: string;
-  role: string;
-  tracking_enabled: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -26,47 +17,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const client = await database.pool.connect();
-    try {
-      const result = await client.query(
-        'SELECT id, username, password, role, tracking_enabled FROM users WHERE username = $1',
-        [username]
-      );
-
-      if (result.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Invalid credentials' },
-          { status: 401 }
-        );
-      }
-
-      const user: User & { password: string } = result.rows[0];
-      const isValidPassword = await compare(password, user.password);
-
-      if (!isValidPassword) {
-        return NextResponse.json(
-          { error: 'Invalid credentials' },
-          { status: 401 }
-        );
-      }
-
-      const userResponse = {
-        id: user.id.toString(),
-        username: user.username,
-        role: user.role
+    const userData = await userQueries.getUserByCredentials(username, password);
+    
+    if (userData) {
+      const userInfo = {
+        id: userData.id,
+        username: userData.username,
+        role: userData.role,
       };
-
-      return NextResponse.json({
-        success: true,
-        user: userResponse
-      });
-    } finally {
-      client.release();
+      
+      await userQueries.upsertActiveUser(userData.id, userData.username, userData.role, Date.now());
+      
+      console.log(`User ${username} logged in successfully (${userData.role})`);
+      
+      return NextResponse.json({ success: true, user: userInfo });
+    } else {
+      return NextResponse.json(
+        { error: 'Credenciales inválidas' },
+        { status: 401 }
+      );
     }
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Error during login:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }

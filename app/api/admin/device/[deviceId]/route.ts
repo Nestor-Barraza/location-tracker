@@ -1,68 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectedDevices, deviceCommands, eventEmitter } from '../../../../../lib/db';
 
-const { database } = require('../../../../../lib/postgres');
+interface RouteParams {
+  params: {
+    deviceId: string;
+  };
+}
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { deviceId: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const deviceId = params.deviceId;
-
-    if (!deviceId) {
+    const { deviceId } = params;
+    
+    console.log(`Admin requesting to delete device: ${deviceId}`);
+    console.log('Available devices:', Array.from(connectedDevices.keys()));
+    
+    if (!connectedDevices.has(deviceId)) {
+      console.log(`Device ${deviceId} not found in connected devices`);
       return NextResponse.json(
-        { error: 'Device ID is required' },
-        { status: 400 }
+        { 
+          error: 'Device not found', 
+          deviceId, 
+          availableDevices: Array.from(connectedDevices.keys()) 
+        },
+        { status: 404 }
       );
     }
-
-    const client = await database.pool.connect();
-    try {
-      const deviceExists = await client.query(
-        'SELECT id FROM devices WHERE device_id = $1',
-        [deviceId]
-      );
-
-      if (deviceExists.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Device not found' },
-          { status: 404 }
-        );
-      }
-
-      await client.query('BEGIN');
-
-      await client.query(
-        'DELETE FROM device_locations WHERE device_id = $1',
-        [deviceId]
-      );
-
-      await client.query(
-        'DELETE FROM device_commands WHERE device_id = $1',
-        [deviceId]
-      );
-
-      await client.query(
-        'DELETE FROM devices WHERE device_id = $1',
-        [deviceId]
-      );
-
-      await client.query('COMMIT');
-
-      return NextResponse.json({
-        success: true,
-        message: 'Device deleted successfully'
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+    
+    connectedDevices.delete(deviceId);
+    
+    if (deviceCommands.has(deviceId)) {
+      deviceCommands.delete(deviceId);
     }
+    
+    console.log(`Device ${deviceId} removed by admin`);
+    
+    eventEmitter.broadcast('device-removed', {
+      device_id: deviceId,
+      timestamp: Date.now()
+    });
+    
+    return NextResponse.json({ success: true, message: 'Device removed successfully' });
   } catch (error) {
-    console.error('Error deleting device:', error);
+    console.error('Error removing device:', error);
     return NextResponse.json(
-      { error: 'Error deleting device' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

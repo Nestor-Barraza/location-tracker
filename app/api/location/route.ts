@@ -1,65 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const { database } = require('../../../lib/postgres');
+import { locationQueries, userQueries, eventEmitter } from '../../../lib/db';
 
 interface LocationData {
-  device_id: string;
+  user_id: string;
   username: string;
   latitude: number;
   longitude: number;
   accuracy?: number;
-  speed?: number;
-  heading?: number;
-  timestamp: number;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const locationData: LocationData = await request.json();
-    const { device_id, username, latitude, longitude, accuracy, speed, heading, timestamp } = locationData;
+    const { user_id, username, latitude, longitude, accuracy } = locationData;
 
-    if (!device_id || !username || !latitude || !longitude || !timestamp) {
+    if (!user_id || !username || !latitude || !longitude) {
       return NextResponse.json(
-        { error: 'Device ID, username, latitude, longitude, and timestamp are required' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    const client = await database.pool.connect();
-    try {
-      const deviceExists = await client.query(
-        'SELECT d.id FROM devices d JOIN users u ON d.user_id = u.id WHERE d.device_id = $1 AND u.username = $2 AND d.is_active = true',
-        [device_id, username]
-      );
+    const timestamp = Date.now();
+    
+    await locationQueries.insertLocation(
+      user_id, username, latitude, longitude, accuracy || null, timestamp
+    );
+    
+    await userQueries.upsertActiveUser(user_id, username, 'user', timestamp);
+    
+    eventEmitter.broadcast('location-update', {
+      user_id,
+      username,
+      latitude,
+      longitude,
+      accuracy,
+      timestamp
+    });
+    
+    console.log(`Location updated for ${username}: ${latitude}, ${longitude}`);
 
-      if (deviceExists.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Device not found or user mismatch' },
-          { status: 404 }
-        );
-      }
-
-      await client.query(
-        'INSERT INTO device_locations (device_id, latitude, longitude, accuracy, speed, heading, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [device_id, latitude, longitude, accuracy, speed, heading, timestamp]
-      );
-
-      await client.query(
-        'UPDATE devices SET last_seen = CURRENT_TIMESTAMP WHERE device_id = $1',
-        [device_id]
-      );
-
-      return NextResponse.json({
-        success: true,
-        message: 'Location saved successfully'
-      });
-    } finally {
-      client.release();
-    }
+    return NextResponse.json({ success: true, timestamp });
   } catch (error) {
     console.error('Error saving location:', error);
     return NextResponse.json(
-      { error: 'Error saving location' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

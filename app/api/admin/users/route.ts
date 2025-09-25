@@ -1,74 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hash } from 'bcrypt';
+import { userQueries } from '../../../../lib/db';
 
-const { database } = require('../../../../lib/postgres');
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const client = await database.pool.connect();
-    try {
-      const result = await client.query(
-        'SELECT id, username, role, created_at, tracking_enabled FROM users ORDER BY created_at DESC'
-      );
-      
-      return NextResponse.json({ users: result.rows });
-    } finally {
-      client.release();
-    }
+    const users = await userQueries.getAllUsers();
+    
+    return NextResponse.json({ users });
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(
-      { error: 'Error al obtener usuarios' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
+interface CreateUserRequest {
+  username: string;
+  password: string;
+  role?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { username, password, role } = await request.json();
+    const { username, password, role = 'user' }: CreateUserRequest = await request.json();
     
     if (!username || !password) {
       return NextResponse.json(
-        { error: 'Usuario y contraseña son requeridos' },
+        { error: 'Username and password are required' },
         { status: 400 }
       );
     }
     
-    const client = await database.pool.connect();
-    try {
-      const existingUser = await client.query(
-        'SELECT id FROM users WHERE username = $1',
-        [username]
+    if (username.length < 3 || password.length < 4) {
+      return NextResponse.json(
+        { error: 'Username must be at least 3 characters and password at least 4 characters' },
+        { status: 400 }
       );
-      
-      if (existingUser.rows.length > 0) {
-        return NextResponse.json(
-          { error: 'El nombre de usuario ya está en uso' },
-          { status: 400 }
-        );
-      }
-      
-      const hashedPassword = await hash(password, 10);
-    const maxIdResult = await client.query('SELECT MAX(id) FROM users');
-    const nextId = (maxIdResult.rows[0].max || 0) + 1;
-    
-    const result = await client.query(
-      'INSERT INTO users (id, username, password, role, tracking_enabled) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, created_at, tracking_enabled',
-      [nextId, username, hashedPassword, role || 'user', false]
-    );
-      
-      return NextResponse.json({ 
-        message: 'Usuario creado exitosamente',
-        user: result.rows[0]
-      });
-    } finally {
-      client.release();
     }
+    
+    const existingUser = await userQueries.getUserByUsername(username);
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'Username already exists' },
+        { status: 400 }
+      );
+    }
+    
+    const userId = await userQueries.createUser(username, password, role);
+    
+    console.log(`Admin created new user: ${username} (${role}) with ID: ${userId}`);
+    
+    return NextResponse.json({ 
+      success: true, 
+      user: { 
+        id: userId, 
+        username, 
+        role 
+      } 
+    });
   } catch (error) {
     console.error('Error creating user:', error);
     return NextResponse.json(
-      { error: 'Error al crear usuario' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
