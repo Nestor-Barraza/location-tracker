@@ -100,7 +100,5 @@ Thumbs.db
 *.sqlite
 *.db
 
-# Capacitor
-capacitor-mobile/android/
-capacitor-mobile/ios/
-capacitor-mobile/.capacitor/
+# Bun
+.bun
