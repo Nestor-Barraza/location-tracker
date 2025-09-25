@@ -1,0 +1,29 @@
+{
+  "name": "location-tracker-mobile",
+  "version": "1.0.0",
+  "description": "Location Tracker Mobile App with Capacitor",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Build completed'",
+    "serve": "npx serve dist",
+    "cap:add:ios": "npx cap add ios",
+    "cap:add:android": "npx cap add android", 
+    "cap:sync": "npx cap sync",
+    "cap:run:ios": "npx cap run ios",
+    "cap:run:android": "npx cap run android",
+    "dev": "npx serve . -p 8080"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/geolocation": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor-community/background-geolocation": "^1.2.14"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "serve": "^14.2.1"
+  }
+}
