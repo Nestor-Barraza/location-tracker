@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { locationQueries } from '../../../lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const timeframe = request.nextUrl.searchParams.get('timeframe') || '24h';
