@@ -15,7 +15,7 @@ const options: swaggerJSDoc.Options = {
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-          ? 'https://your-domain.vercel.app' 
+          ? 'https://location-tracker-kigo.onrender.com' 
           : 'http://localhost:3000',
         description: process.env.NODE_ENV === 'production' ? 'Production' : 'Development'
       }
