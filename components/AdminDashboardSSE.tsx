@@ -130,22 +130,38 @@ export default function AdminDashboardSSE() {
   const addEventListener = sseResult?.addEventListener || (() => () => {});
   const error = sseResult?.error || null;
 
-  useEffect(() => {
-    if (serverUrl && user?.role === 'admin') {
-      loadInitialData();
-      loadConnectedDevices();
-    }
-  }, [serverUrl, user]);
+  const loadInitialData = async () => {
+    try {
+      const locationsResponse = await fetch(`${serverUrl}/api/locations?timeframe=24h`);
+      const locationsData = await locationsResponse.json();
+      
+      if (locationsData.locations) {
+        setUserLocations(locationsData.locations);
+      }
 
-  useEffect(() => {
-    if (activeTab === 'tracking' && serverUrl) {
-      const interval = setInterval(() => {
-        loadConnectedDevices();
-      }, 5000);
-
-      return () => clearInterval(interval);
+      const usersResponse = await fetch(`${serverUrl}/api/active-users`);
+      const usersData = await usersResponse.json();
+      
+      if (usersData.users) {
+        setActiveUsers(usersData.users);
+      }
+    } catch (error) {
+      console.error('Error loading initial data:', error);
     }
-  }, [activeTab, serverUrl]);
+  };
+
+  const loadConnectedDevices = async () => {
+    try {
+      const response = await fetch(`${serverUrl}/api/admin/devices`);
+      const data = await response.json();
+      
+      if (data.devices) {
+        setConnectedDevices(data.devices);
+      }
+    } catch (error) {
+      console.error('Error loading devices:', error);
+    }
+  };
 
   const getLocationInfo = async (lat: number, lng: number): Promise<{city: string, country: string}> => {
     try {
@@ -165,160 +181,41 @@ export default function AdminDashboardSSE() {
     }
   };
 
-  useEffect(() => {
-    const combineDevicesWithLocations = async () => {
-      const devicesWithLoc: DeviceWithLocation[] = [];
-      
-      for (const device of connectedDevices) {
-        const userLocs = userLocations.filter(loc => loc.user_id.includes(device.device_id));
-        const lastLocation = userLocs.length > 0 ? userLocs[userLocs.length - 1] : undefined;
-        
-        let city = 'Sin ubicación';
-        let country = 'Sin ubicación';
-        
-        if (lastLocation) {
-          const locationInfo = await getLocationInfo(lastLocation.latitude, lastLocation.longitude);
-          city = locationInfo.city;
-          country = locationInfo.country;
-        }
-        
-        devicesWithLoc.push({
-          device_id: device.device_id,
-          username: device.username,
-          is_tracking: device.is_tracking,
-          last_seen: device.last_seen,
-          registered_at: device.registered_at,
-          lastLocation,
-          city,
-          country
-        });
-      }
-      
-      setDevicesWithLocation(devicesWithLoc);
-    };
-    
-    if (connectedDevices.length > 0) {
-      combineDevicesWithLocations();
-    }
-  }, [connectedDevices, userLocations]);
-
-  useEffect(() => {
-    if (!isConnected || typeof addEventListener !== 'function') return;
-
-    try {
-      const removeLocationListener = addEventListener('location-update', (locationData: UserLocation) => {
-        console.log('Received location update:', locationData);
-        
-        setUserLocations(prev => {
-          const filtered = prev.filter(loc => loc.user_id !== locationData.user_id);
-          return [...filtered, locationData];
-        });
-      });
-
-      const removeDeviceListener = addEventListener('device-removed', (data: DeviceRemovedData) => {
-        console.log('Device removed:', data.device_id);
-        
-        setTimeout(() => loadConnectedDevices(), 500);
-        
-        if (selectedDevice === data.device_id) {
-          setSelectedDevice('');
-        }
-      });
-
-      return () => {
-        if (typeof removeLocationListener === 'function') {
-          removeLocationListener();
-        }
-        if (typeof removeDeviceListener === 'function') {
-          removeDeviceListener();
-        }
-      };
-    } catch (error) {
-      console.error('Error setting up SSE listener:', error);
-    }
-  }, [isConnected, addEventListener, selectedDevice]);
-
-  const loadInitialData = async () => {
-    try {
-      const locationsResponse = await fetch(`${serverUrl}/api/locations?timeframe=24h`);
-      const locationsData = await locationsResponse.json();
-      
-      if (locationsData.locations) {
-        setUserLocations(locationsData.locations);
-      }
-
-      const usersResponse = await fetch(`${serverUrl}/api/active-users`);
-      const usersData = await usersResponse.json();
-      
-      if (usersData.users) {
-        setActiveUsers(usersData.users);
-      }
-
-    } catch (error) {
-      console.error('Error loading initial data:', error);
-    }
-  };
-
-  const loadConnectedDevices = async () => {
-    try {
-      const response = await fetch(`${serverUrl}/api/admin/devices`);
-      const data = await response.json();
-      
-      if (data.devices) {
-        setConnectedDevices(data.devices);
-      }
-    } catch (error) {
-      console.error('Error loading devices:', error);
-    }
-  };
-
-
-
   const handleDeleteDevice = async (deviceId: string) => {
     if (!confirm('¿Estás seguro de que quieres eliminar este dispositivo? Esta acción no se puede deshacer.')) {
       return;
     }
-
-    console.log(`Attempting to delete device: ${deviceId}`);
 
     try {
       const response = await fetch(`${serverUrl}/api/admin/device/${deviceId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
-
-      console.log(`Delete response status: ${response.status}`);
       
       if (response.ok) {
         const result = await response.json();
         
         if (result.success) {
-          console.log(`Device ${deviceId} deleted successfully`);
-          
           if (selectedDevice === deviceId) {
             setSelectedDevice('');
           }
           
           loadConnectedDevices();
-          
           alert('Dispositivo eliminado exitosamente');
         } else {
-          console.error('Delete failed:', result);
           alert('Error al eliminar el dispositivo: ' + result.error);
         }
       } else {
         const errorText = await response.text();
-        console.error('Delete request failed:', response.status, errorText);
         
         try {
           const errorData: DeleteDeviceError = JSON.parse(errorText);
-          alert(`Error ${response.status}: ${errorData.error}\nDispositivo solicitado: ${deviceId}\nDisponibles: ${errorData.availableDevices?.join(', ') || 'ninguno'}`);
+          alert(`Error ${response.status}: ${errorData.error}`);
         } catch {
           alert(`Error ${response.status}: ${errorText}`);
         }
       }
     } catch (error) {
-      console.error('Network error deleting device:', error);
       alert('Error de red al eliminar el dispositivo: ' + (error instanceof Error ? error.message : 'Error desconocido'));
     }
   };
@@ -363,7 +260,6 @@ export default function AdminDashboardSSE() {
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Error de conexión' });
-      console.error('Error creating user:', error);
     } finally {
       setIsCreatingUser(false);
     }
@@ -389,7 +285,6 @@ export default function AdminDashboardSSE() {
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Error de conexión' });
-      console.error('Error updating tracking:', error);
     }
   };
 
@@ -412,22 +307,8 @@ export default function AdminDashboardSSE() {
       }
     } catch (error) {
       setUserMessage({ type: 'error', text: 'Error de conexión' });
-      console.error('Error deleting user:', error);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === 'users' && serverUrl) {
-      loadUsers();
-    }
-  }, [activeTab, serverUrl]);
-
-  useEffect(() => {
-    if (userMessage) {
-      const timer = setTimeout(() => setUserMessage(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [userMessage]);
 
   const handleResetUserPassword = (userId: number, username: string) => {
     setResetPasswordForm({
@@ -478,6 +359,105 @@ export default function AdminDashboardSSE() {
       setIsResettingPassword(false);
     }
   };
+
+  useEffect(() => {
+    if (serverUrl && user?.role === 'admin') {
+      loadInitialData();
+      loadConnectedDevices();
+    }
+  }, [serverUrl, user]);
+
+  useEffect(() => {
+    if (activeTab === 'tracking' && serverUrl) {
+      const interval = setInterval(() => {
+        loadConnectedDevices();
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, serverUrl]);
+
+  useEffect(() => {
+    const combineDevicesWithLocations = async () => {
+      const devicesWithLoc: DeviceWithLocation[] = [];
+      
+      for (const device of connectedDevices) {
+        const userLocs = userLocations.filter(loc => loc.user_id.includes(device.device_id));
+        const lastLocation = userLocs.length > 0 ? userLocs[userLocs.length - 1] : undefined;
+        
+        let city = 'Sin ubicación';
+        let country = 'Sin ubicación';
+        
+        if (lastLocation) {
+          const locationInfo = await getLocationInfo(lastLocation.latitude, lastLocation.longitude);
+          city = locationInfo.city;
+          country = locationInfo.country;
+        }
+        
+        devicesWithLoc.push({
+          device_id: device.device_id,
+          username: device.username,
+          is_tracking: device.is_tracking,
+          last_seen: device.last_seen,
+          registered_at: device.registered_at,
+          lastLocation,
+          city,
+          country
+        });
+      }
+      
+      setDevicesWithLocation(devicesWithLoc);
+    };
+    
+    if (connectedDevices.length > 0) {
+      combineDevicesWithLocations();
+    }
+  }, [connectedDevices, userLocations]);
+
+  useEffect(() => {
+    if (!isConnected || typeof addEventListener !== 'function') return;
+
+    try {
+      const removeLocationListener = addEventListener('location-update', (locationData: UserLocation) => {
+        setUserLocations(prev => {
+          const filtered = prev.filter(loc => loc.user_id !== locationData.user_id);
+          return [...filtered, locationData];
+        });
+      });
+
+      const removeDeviceListener = addEventListener('device-removed', (data: DeviceRemovedData) => {
+        setTimeout(() => loadConnectedDevices(), 500);
+        
+        if (selectedDevice === data.device_id) {
+          setSelectedDevice('');
+        }
+      });
+
+      return () => {
+        if (typeof removeLocationListener === 'function') {
+          removeLocationListener();
+        }
+        if (typeof removeDeviceListener === 'function') {
+          removeDeviceListener();
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up SSE listener:', error);
+    }
+  }, [isConnected, addEventListener, selectedDevice]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && serverUrl) {
+      loadUsers();
+    }
+  }, [activeTab, serverUrl]);
+
+  useEffect(() => {
+    if (userMessage) {
+      const timer = setTimeout(() => setUserMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [userMessage]);
 
   const selectedDeviceLocations = selectedDevice 
     ? userLocations.filter(loc => loc.user_id.includes(selectedDevice))
@@ -552,7 +532,6 @@ export default function AdminDashboardSSE() {
                 {devicesWithLocation.length} dispositivos activos
               </span>
             </div>
-          
           </div>
 
           {/* Layout Principal */}
@@ -604,8 +583,29 @@ export default function AdminDashboardSSE() {
                       </div>
                       
                       {device.lastLocation && (
-                        <div className="text-xs text-black/50 mt-2">
-                          Última actualización: {device.lastLocation.timestamp ? new Date(Number(device.lastLocation.timestamp)).toLocaleTimeString() : 'No disponible'}
+                        <div className="mt-3 space-y-2 text-xs">
+                          <div>
+                            <span className="text-black/60 font-medium">Coordenadas:</span>
+                            <div className="font-mono text-green-600 mt-1">
+                              {Number(device.lastLocation.latitude).toFixed(6)}<br />
+                              {Number(device.lastLocation.longitude).toFixed(6)}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-black/60 font-medium">Hora:</span>
+                            <div className="text-blue-600 mt-1">
+                              {new Date(Number(device.lastLocation.timestamp)).toLocaleString('es-ES')}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-black/60 font-medium">Precisión:</span>
+                            <div className="text-purple-600 mt-1">
+                              {device.lastLocation.accuracy 
+                                ? `±${Number(device.lastLocation.accuracy).toFixed(0)}m`
+                                : 'N/A'
+                              }
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -629,41 +629,64 @@ export default function AdminDashboardSSE() {
                     <FiMap className="mr-3 text-purple-400"/>
                     {selectedDevice 
                       ? `Ubicación de ${selectedDeviceData?.username || 'Usuario'}` 
-                      : 'Selecciona un dispositivo para ver su ubicación'}
+                      : 'Vista General - Todos los Dispositivos'}
                   </h3>
-                  {selectedDevice && selectedDeviceLocations.length > 0 && (
-                    <span className="text-sm text-black/70 bg-gray-200 px-3 py-1 rounded-full">
-                      {selectedDeviceLocations.length} ubicaciones
-                    </span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {selectedDevice && (
+                      <button
+                        onClick={() => setSelectedDevice('')}
+                        className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded-lg text-sm transition-colors flex items-center gap-2"
+                      >
+                        <FiMap className="w-4 h-4" />
+                        Vista General
+                      </button>
+                    )}
+                    {selectedDevice && selectedDeviceLocations.length > 0 && (
+                      <span className="text-sm text-black/70 bg-gray-200 px-3 py-1 rounded-full">
+                        {selectedDeviceLocations.length} ubicaciones
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="h-[500px] rounded-lg overflow-hidden">
-                  {selectedDevice && selectedDeviceLocations.length > 0 ? (
+                  {devicesWithLocation.length > 0 ? (
                     <Map 
-                      locations={selectedDeviceLocations.map(loc => ({
-                        id: loc.user_id,
-                        userId: loc.username,
-                        latitude: loc.latitude,
-                        longitude: loc.longitude,
-                        timestamp: new Date(Number(loc.timestamp)),
-                        accuracy: loc.accuracy
-                      }))} 
-                      zoom={12}
+                      locations={selectedDevice && selectedDeviceLocations.length > 0 
+                        ? selectedDeviceLocations.map(loc => ({
+                            id: loc.user_id,
+                            userId: loc.username,
+                            latitude: loc.latitude,
+                            longitude: loc.longitude,
+                            timestamp: new Date(Number(loc.timestamp)),
+                            accuracy: loc.accuracy
+                          }))
+                        : devicesWithLocation
+                            .filter(device => device.lastLocation)
+                            .map(device => ({
+                              id: device.device_id,
+                              userId: device.username,
+                              latitude: device.lastLocation!.latitude,
+                              longitude: device.lastLocation!.longitude,
+                              timestamp: new Date(Number(device.lastLocation!.timestamp)),
+                              accuracy: device.lastLocation!.accuracy
+                            }))
+                      } 
+                      zoom={selectedDevice && selectedDeviceLocations.length > 0 ? 15 : 4}
                     />
                   ) : (
                     <div className="h-full bg-gradient-to-br from-blue-900/50 to-purple-900/50 rounded-lg flex items-center justify-center">
                       <div className="text-center text-black/60">
                         <FiMap className="mx-auto text-6xl mb-4" />
-                        <h3 className="text-xl font-medium mb-2 text-black">Sin selección</h3>
-                        <p className="text-black">Selecciona un dispositivo de la lista para ver su ubicación en el mapa</p>
+                        <h3 className="text-xl font-medium mb-2 text-black">Sin dispositivos</h3>
+                        <p className="text-black">No hay dispositivos conectados con ubicación</p>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Información detallada del dispositivo seleccionado */}
-                {selectedDeviceData && selectedDeviceData.lastLocation && (
+                {/* Información detallada */}
+                {selectedDevice && selectedDeviceData && selectedDeviceData.lastLocation ? (
                   <div className="mt-4 p-4 bg-black/30 rounded-lg">
                     <h4 className="font-medium mb-2 text-black">Información detallada:</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">
@@ -692,7 +715,7 @@ export default function AdminDashboardSSE() {
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -897,7 +920,6 @@ export default function AdminDashboardSSE() {
           </div>
         </div>
       )}
-
 
       {/* Reset Password Modal */}
       {resetPasswordForm && (

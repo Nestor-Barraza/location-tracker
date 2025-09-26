@@ -23,6 +23,13 @@ export default function MapComponent({ locations, center = [6.2174, -75.5575], z
   const uniqueUsers = new Set(locations.map(l => l.userId));
 
   useEffect(() => {
+    setViewState(prev => ({
+      ...prev,
+      zoom: zoom
+    }));
+  }, [zoom]);
+
+  useEffect(() => {
     if (latestLocation) {
       setViewState(prev => ({
         ...prev,
