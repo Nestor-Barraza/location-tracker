@@ -5,7 +5,7 @@ interface Location {
   id: number;
   user_id: string;
   username: string;
-  device_id: string;
+  device_id?: string;
   latitude: number;
   longitude: number;
   accuracy: number | null;
@@ -131,13 +131,17 @@ class PostgresDatabase {
           id SERIAL PRIMARY KEY,
           user_id VARCHAR(100) NOT NULL,
           username VARCHAR(50) NOT NULL,
-          device_id VARCHAR(255) NOT NULL,
           latitude DECIMAL(10, 8) NOT NULL,
           longitude DECIMAL(11, 8) NOT NULL,
           accuracy DECIMAL(8, 2),
           timestamp BIGINT NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+      `);
+
+      // Add device_id column to existing locations table
+      await client.query(`
+        ALTER TABLE locations ADD COLUMN IF NOT EXISTS device_id VARCHAR(255);
       `);
 
       await client.query(`
@@ -213,7 +217,7 @@ class PostgresDatabase {
     }
   }
 
-  async insertLocation(userId: string, username: string, latitude: number, longitude: number, accuracy: number | null, timestamp: number, deviceId: string): Promise<{ id: number }> {
+  async insertLocation(userId: string, username: string, latitude: number, longitude: number, accuracy: number | null, timestamp: number, deviceId: string | null = null): Promise<{ id: number }> {
     const client = await this.pool.connect();
     try {
       const query = `

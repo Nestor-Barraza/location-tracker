@@ -20,6 +20,7 @@ interface UserLocation {
   id: string;
   user_id: string;
   username: string;
+  device_id?: string;
   latitude: number;
   longitude: number;
   accuracy?: number;
@@ -58,6 +59,7 @@ interface UserWithDevice {
   longitude: number | null;
   accuracy: number | null;
   timestamp: number | null;
+  device_id: string | null;
   last_location_time: {
     timestamp: number;
     formatted: string;
@@ -119,6 +121,7 @@ interface UserDetails {
     longitude: number;
     timestamp: number;
     accuracy?: number;
+    device_id?: string;
     date: string;
     time: string;
   }>;
@@ -180,6 +183,9 @@ export default function AdminDashboardSSE() {
   const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<UserDetails['locations'][0] | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserWithDevice | null>(null);
+  const [selectedDeviceFilter, setSelectedDeviceFilter] = useState<string>('all');
+  const [isLoadingTrackingData, setIsLoadingTrackingData] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -195,6 +201,12 @@ export default function AdminDashboardSSE() {
     }
   }, [userDetails]);
 
+  useEffect(() => {
+    if (!userDetailsModal?.show) {
+      setSelectedDeviceFilter('all');
+    }
+  }, [userDetailsModal?.show]);
+
   const sseResult = useSSE(
     serverUrl ? `${serverUrl}/api/events` : '',
     {
@@ -209,6 +221,7 @@ export default function AdminDashboardSSE() {
   const error = sseResult?.error || null;
 
   const loadInitialData = async () => {
+    setIsLoadingTrackingData(true);
     try {
       const locationsResponse = await fetch(`${serverUrl}/api/locations?timeframe=24h`);
       const locationsData = await locationsResponse.json();
@@ -232,6 +245,8 @@ export default function AdminDashboardSSE() {
       }
     } catch (error) {
       console.error('Error loading initial data:', error);
+    } finally {
+      setIsLoadingTrackingData(false);
     }
   };
 
@@ -306,6 +321,7 @@ export default function AdminDashboardSSE() {
   };
 
   const loadUsers = async () => {
+    setIsLoadingUsers(true);
     try {
       const response = await fetch(`${serverUrl}/api/admin/users`);
       if (response.ok) {
@@ -314,6 +330,8 @@ export default function AdminDashboardSSE() {
       }
     } catch (error) {
       console.error('Error loading users:', error);
+    } finally {
+      setIsLoadingUsers(false);
     }
   };
 
@@ -492,7 +510,7 @@ export default function AdminDashboardSSE() {
       const devicesWithLoc: DeviceWithLocation[] = [];
       
       for (const device of connectedDevices) {
-        const userLocs = userLocations.filter(loc => loc.user_id.includes(device.device_id));
+        const userLocs = userLocations.filter(loc => loc.device_id && loc.device_id === device.device_id);
         const lastLocation = userLocs.length > 0 ? userLocs[userLocs.length - 1] : undefined;
         
         let city = 'Sin ubicación';
@@ -570,10 +588,16 @@ export default function AdminDashboardSSE() {
   }, [userMessage]);
 
   const selectedDeviceLocations = selectedDevice 
-    ? userLocations.filter(loc => loc.user_id.includes(selectedDevice))
+    ? userLocations.filter(loc => loc.device_id && loc.device_id === selectedDevice)
     : [];
 
   const selectedDeviceData = devicesWithLocation.find(d => d.device_id === selectedDevice);
+
+  const filteredLocations = userDetails ? userDetails.locations.filter(location => {
+    if (selectedDeviceFilter === 'all') return true;
+    if (selectedDeviceFilter === 'no-device') return !location.device_id;
+    return location.device_id === selectedDeviceFilter;
+  }) : [];
 
   return (
     <div className="container mx-auto p-4 sm:p-6 lg:p-8 text-black">
@@ -644,8 +668,16 @@ export default function AdminDashboardSSE() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
+          {isLoadingTrackingData ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex items-center text-gray-600">
+                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mr-3"></div>
+                Cargando datos de seguimiento...
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
               <div className="bg-black/20 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/10 p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">
                   <FiUsers className="mr-3 text-purple-400"/>
@@ -842,6 +874,7 @@ export default function AdminDashboardSSE() {
               </div>
             </div>
           </div>
+          )}
         </>
       )}
 
@@ -926,8 +959,16 @@ export default function AdminDashboardSSE() {
 
           {/* Users List */}
           <div className="bg-white rounded-lg border shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            {isLoadingUsers ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex items-center text-gray-600">
+                  <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mr-3"></div>
+                  Cargando usuarios...
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1046,7 +1087,8 @@ export default function AdminDashboardSSE() {
                   )}
                 </tbody>
               </table>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1295,13 +1337,18 @@ export default function AdminDashboardSSE() {
                         </h4>
                         <div className="bg-white border border-gray-200 rounded-lg p-4 flex-grow">
                           <MiniMap
-                            locations={userDetails.locations}
+                            locations={filteredLocations}
                             selectedLocation={selectedLocation}
                             onLocationClick={(location) => setSelectedLocation(location)}
                             className="w-full aspect-square"
                           />
                           <div className="mt-3 text-sm text-gray-600 text-center">
                             Haz clic en un punto para ver detalles
+                            {selectedDeviceFilter !== 'all' && (
+                              <span className="block text-xs text-indigo-600 mt-1">
+                                Mostrando ubicaciones del dispositivo seleccionado
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1311,10 +1358,31 @@ export default function AdminDashboardSSE() {
                   {/* Location History */}
                   {userDetails.locations.length > 0 && (
                     <div>
-                      <h4 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
-                        <FiClock className="mr-2 text-indigo-600" />
-                        Historial de Ubicaciones ({userDetails.locations.length})
-                      </h4>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-semibold flex items-center text-gray-900">
+                          <FiClock className="mr-2 text-indigo-600" />
+                          Historial de Ubicaciones ({filteredLocations.length} de {userDetails.locations.length})
+                        </h4>
+                        
+                        {/* Device Filter */}
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-600">Filtrar por dispositivo:</span>
+                          <select
+                            value={selectedDeviceFilter}
+                            onChange={(e) => setSelectedDeviceFilter(e.target.value)}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <option value="all">Todos los dispositivos</option>
+                            <option value="no-device">Sin dispositivo asociado</option>
+                            {userDetails.devices.map((device) => (
+                              <option key={device.device_id} value={device.device_id}>
+                                {device.device_id.substring(0, 8)}... ({device.user_agent.split(' ')[0]})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      
                       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                         <div className="max-h-80 overflow-y-auto">
                           <table className="w-full text-sm">
@@ -1324,14 +1392,19 @@ export default function AdminDashboardSSE() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coordenadas</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precisión</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dispositivo</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
-                              {userDetails.locations.map((location, index) => {
+                              {filteredLocations.map((location, index) => {
                                 const isSelected = selectedLocation && 
                                   Number(selectedLocation.latitude) === Number(location.latitude) && 
                                   Number(selectedLocation.longitude) === Number(location.longitude) &&
                                   selectedLocation.timestamp === location.timestamp;
+                                
+                                const deviceInfo = location.device_id 
+                                  ? userDetails.devices.find(d => d.device_id === location.device_id)
+                                  : null;
                                 
                                 return (
                                 <tr 
@@ -1355,6 +1428,22 @@ export default function AdminDashboardSSE() {
                                   <td className="px-4 py-3 text-purple-600">
                                     {location.accuracy ? `±${location.accuracy}m` : 'N/A'}
                                   </td>
+                                  <td className="px-4 py-3">
+                                    {location.device_id ? (
+                                      <div className="text-xs">
+                                        <div className="font-mono text-blue-600 mb-1">
+                                          {location.device_id.substring(0, 8)}...
+                                        </div>
+                                        {deviceInfo && (
+                                          <div className="text-gray-500">
+                                            {deviceInfo.user_agent.split(' ')[0]}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400 text-xs">Sin dispositivo</span>
+                                    )}
+                                  </td>
                                 </tr>
                                 );
                               })}
@@ -1362,6 +1451,15 @@ export default function AdminDashboardSSE() {
                           </table>
                         </div>
                       </div>
+                      
+                      {filteredLocations.length === 0 && selectedDeviceFilter !== 'all' && (
+                        <div className="text-center py-8 bg-gray-50 rounded-lg">
+                          <FiSmartphone className="mx-auto text-4xl text-gray-300 mb-2" />
+                          <p className="text-gray-500">
+                            No hay ubicaciones para el dispositivo seleccionado
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 

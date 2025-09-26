@@ -77,6 +77,7 @@ export async function GET(
         longitude: location.longitude,
         timestamp: timestamp,
         accuracy: location.accuracy,
+        device_id: location.device_id,
         date: date.toLocaleDateString(),
         time: date.toLocaleTimeString()
       };

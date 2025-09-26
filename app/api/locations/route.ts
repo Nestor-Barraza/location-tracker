@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
           longitude: user.has_location ? Number(user.longitude) : null,
           accuracy: user.accuracy ? Number(user.accuracy) : null,
           timestamp: user.has_location ? timestamp : null,
+          device_id: user.device_id || null,
           last_location_time: formattedTime,
           latest_device: {
             device_id: user.latest_device_id,
