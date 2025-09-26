@@ -1,4 +1,4 @@
-import { locationQueries, userQueries } from './postgres';
+import { locationQueries, userQueries } from './postgres.mjs';
 
 interface EventClient {
   write: (data: string) => void;
