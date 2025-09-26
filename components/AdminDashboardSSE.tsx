@@ -4,11 +4,16 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useSSE } from '../hooks/useSSE';
 import { useAuth } from '../context/AuthContext';
-import { FiUsers, FiMap, FiList, FiFilter, FiBarChart2, FiWifi, FiWifiOff, FiTrash2, FiX, FiPlus, FiUserPlus, FiKey } from 'react-icons/fi';
+import { FiUsers, FiMap, FiList, FiFilter, FiBarChart2, FiWifi, FiWifiOff, FiTrash2, FiX, FiPlus, FiUserPlus, FiKey, FiInfo, FiMapPin, FiSmartphone, FiClock, FiActivity } from 'react-icons/fi';
 
 const Map = dynamic(() => import('./Map'), {
   ssr: false,
   loading: () => <div className="h-full bg-black/20 rounded-lg animate-pulse flex items-center justify-center text-white">Cargando mapa...</div>
+});
+
+const MiniMap = dynamic(() => import('./MiniMap'), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-gray-100 rounded-lg animate-pulse flex items-center justify-center">Cargando mapa...</div>
 });
 
 interface UserLocation {
@@ -73,6 +78,42 @@ interface CreateUserForm {
   role: string;
 }
 
+interface UserDetails {
+  user: {
+    username: string;
+    role: string;
+    tracking_enabled?: boolean;
+  };
+  last_location: {
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+    accuracy?: number;
+    formatted_time: string;
+  } | null;
+  locations: Array<{
+    latitude: number;
+    longitude: number;
+    timestamp: number;
+    accuracy?: number;
+    date: string;
+    time: string;
+  }>;
+  devices: Array<{
+    device_id: string;
+    user_agent: string;
+    created_at: string;
+    last_seen: string;
+    tracking_enabled: boolean;
+  }>;
+  stats: {
+    total_locations: number;
+    total_devices: number;
+    first_seen: string | null;
+    last_seen: string | null;
+  };
+}
+
 export default function AdminDashboardSSE() {
   const { user } = useAuth();
   
@@ -110,12 +151,24 @@ export default function AdminDashboardSSE() {
   const [userMessage, setUserMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [resetPasswordForm, setResetPasswordForm] = useState<{ userId: number; username: string; newPassword: string; confirmPassword: string } | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [userDetailsModal, setUserDetailsModal] = useState<{ show: boolean; username: string } | null>(null);
+  const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
+  const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<UserDetails['locations'][0] | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setServerUrl(window.location.origin);
     }
   }, []);
+
+  // Set latest location as selected when user details are loaded
+  useEffect(() => {
+    if (userDetails && userDetails.locations.length > 0) {
+      const latestLocation = userDetails.locations[userDetails.locations.length - 1];
+      setSelectedLocation(latestLocation);
+    }
+  }, [userDetails]);
 
   const sseResult = useSSE(
     serverUrl ? `${serverUrl}/api/events` : '',
@@ -358,6 +411,31 @@ export default function AdminDashboardSSE() {
     } finally {
       setIsResettingPassword(false);
     }
+  };
+
+  const loadUserDetails = async (username: string) => {
+    setIsLoadingUserDetails(true);
+    setUserDetails(null);
+
+    try {
+      const response = await fetch(`${serverUrl}/api/admin/users/${username}/details`);
+      
+      if (response.ok) {
+        const data: UserDetails = await response.json();
+        setUserDetails(data);
+      } else {
+        setUserMessage({ type: 'error', text: 'Error al cargar los detalles del usuario' });
+      }
+    } catch (error) {
+      setUserMessage({ type: 'error', text: 'Error de conexión al cargar detalles' });
+    } finally {
+      setIsLoadingUserDetails(false);
+    }
+  };
+
+  const handleViewUserDetails = (username: string) => {
+    setUserDetailsModal({ show: true, username });
+    loadUserDetails(username);
   };
 
   useEffect(() => {
@@ -882,6 +960,13 @@ export default function AdminDashboardSSE() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex gap-2 justify-end">
                           <button
+                            onClick={() => handleViewUserDetails(userData.username)}
+                            className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                            title="Ver detalles"
+                          >
+                            <FiInfo />
+                          </button>
+                          <button
                             onClick={() => handleResetUserPassword(userData.id, userData.username)}
                             className="text-blue-600 hover:text-blue-900 transition-colors"
                             title="Cambiar contraseña"
@@ -981,6 +1066,276 @@ export default function AdminDashboardSSE() {
                 {isResettingPassword && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                 {isResettingPassword ? 'Cambiando...' : 'Cambiar contraseña'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Details Modal */}
+      {userDetailsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <FiInfo className="text-2xl mr-3" />
+                  <div>
+                    <h3 className="text-xl font-semibold">Detalles del Usuario</h3>
+                    <p className="text-indigo-100">@{userDetailsModal.username}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setUserDetailsModal(null);
+                    setUserDetails(null);
+                    setSelectedLocation(null);
+                  }}
+                  className="text-white hover:text-indigo-200 transition-colors"
+                >
+                  <FiX className="text-2xl" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {isLoadingUserDetails ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center text-gray-600">
+                    <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mr-3"></div>
+                    Cargando detalles del usuario...
+                  </div>
+                </div>
+              ) : userDetails ? (
+                <div className="space-y-8">
+                  {/* User Info Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-center">
+                        <FiUsers className="text-blue-600 text-xl mr-3" />
+                        <div>
+                          <p className="text-sm text-blue-600 font-medium">Usuario</p>
+                          <p className="text-lg font-semibold text-blue-900">{userDetails.user.username}</p>
+                          <p className="text-sm text-blue-700">{userDetails.user.role === 'admin' ? 'Administrador' : 'Usuario'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                      <div className="flex items-center">
+                        <FiMapPin className="text-green-600 text-xl mr-3" />
+                        <div>
+                          <p className="text-sm text-green-600 font-medium">Ubicaciones</p>
+                          <p className="text-lg font-semibold text-green-900">{userDetails.stats.total_locations}</p>
+                          <p className="text-sm text-green-700">Registradas</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                      <div className="flex items-center">
+                        <FiSmartphone className="text-purple-600 text-xl mr-3" />
+                        <div>
+                          <p className="text-sm text-purple-600 font-medium">Dispositivos</p>
+                          <p className="text-lg font-semibold text-purple-900">{userDetails.stats.total_devices}</p>
+                          <p className="text-sm text-purple-700">Conectados</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+                      <div className="flex items-center">
+                        <FiActivity className="text-orange-600 text-xl mr-3" />
+                        <div>
+                          <p className="text-sm text-orange-600 font-medium">Estado</p>
+                          <p className="text-lg font-semibold text-orange-900">
+                            {userDetails.user.tracking_enabled !== false ? 'Activo' : 'Inactivo'}
+                          </p>
+                          <p className="text-sm text-orange-700">Tracking</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Details and Map Layout */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Column - Details */}
+                    <div className="space-y-6">
+                      {/* Last Location */}
+                      {userDetails.last_location && (
+                        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                          <h4 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
+                            <FiMapPin className="mr-2 text-indigo-600" />
+                            Última Ubicación
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-sm text-gray-600 font-medium">Latitud</p>
+                              <p className="font-mono text-green-600">{Number(userDetails.last_location.latitude).toFixed(6)}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600 font-medium">Longitud</p>
+                              <p className="font-mono text-green-600">{Number(userDetails.last_location.longitude).toFixed(6)}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600 font-medium">Precisión</p>
+                              <p className="text-purple-600">
+                                {userDetails.last_location.accuracy ? `±${userDetails.last_location.accuracy}m` : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600 font-medium">Fecha y Hora</p>
+                              <p className="text-blue-600">{userDetails.last_location.formatted_time}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Devices */}
+                      {userDetails.devices.length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
+                        <FiSmartphone className="mr-2 text-indigo-600" />
+                        Dispositivos ({userDetails.devices.length})
+                      </h4>
+                      <div className="space-y-3">
+                        {userDetails.devices.map((device, index) => (
+                          <div key={device.device_id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center">
+                                <div className={`w-3 h-3 rounded-full mr-3 ${device.tracking_enabled ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                                <div>
+                                  <p className="font-medium text-gray-900">Dispositivo #{index + 1}</p>
+                                  <p className="text-sm text-gray-500 font-mono">{device.device_id}</p>
+                                </div>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                device.tracking_enabled 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {device.tracking_enabled ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div>
+                                <span className="text-gray-600">User Agent:</span>
+                                <p className="text-gray-900 truncate">{device.user_agent}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <span className="text-gray-600">Registrado:</span>
+                                  <p className="text-gray-900">{device.created_at}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Última Conexión:</span>
+                                  <p className="text-gray-900">{device.last_seen}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                      )}
+                    </div>
+
+                    {/* Right Column - Mini Map */}
+                    {userDetails.locations.length > 0 && (
+                      <div className="flex flex-col">
+                        <h4 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
+                          <FiMap className="mr-2 text-indigo-600" />
+                          Mapa de Ubicaciones
+                        </h4>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4 flex-grow">
+                          <MiniMap
+                            locations={userDetails.locations}
+                            selectedLocation={selectedLocation}
+                            onLocationClick={(location) => setSelectedLocation(location)}
+                            className="w-full aspect-square"
+                          />
+                          <div className="mt-3 text-sm text-gray-600 text-center">
+                            Haz clic en un punto para ver detalles
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Location History */}
+                  {userDetails.locations.length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
+                        <FiClock className="mr-2 text-indigo-600" />
+                        Historial de Ubicaciones ({userDetails.locations.length})
+                      </h4>
+                      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="max-h-80 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coordenadas</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precisión</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {userDetails.locations.map((location, index) => {
+                                const isSelected = selectedLocation && 
+                                  Number(selectedLocation.latitude) === Number(location.latitude) && 
+                                  Number(selectedLocation.longitude) === Number(location.longitude) &&
+                                  selectedLocation.timestamp === location.timestamp;
+                                
+                                return (
+                                <tr 
+                                  key={index} 
+                                  className={`cursor-pointer transition-colors ${
+                                    isSelected 
+                                      ? 'bg-yellow-50 hover:bg-yellow-100 border-l-4 border-yellow-400' 
+                                      : 'hover:bg-gray-50'
+                                  }`}
+                                  onClick={() => setSelectedLocation(location)}
+                                  title="Haz clic para ver esta ubicación en el mapa"
+                                >
+                                  <td className="px-4 py-3 text-gray-900">{location.date}</td>
+                                  <td className="px-4 py-3 text-gray-900">{location.time}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-mono text-xs">
+                                      <div className="text-green-600">{Number(location.latitude).toFixed(6)}</div>
+                                      <div className="text-green-600">{Number(location.longitude).toFixed(6)}</div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-purple-600">
+                                    {location.accuracy ? `±${location.accuracy}m` : 'N/A'}
+                                  </td>
+                                </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty States */}
+                  {userDetails.locations.length === 0 && userDetails.devices.length === 0 && (
+                    <div className="text-center py-12">
+                      <FiMapPin className="mx-auto text-6xl text-gray-300 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Sin datos disponibles</h3>
+                      <p className="text-gray-500">Este usuario no tiene ubicaciones o dispositivos registrados.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FiMapPin className="mx-auto text-6xl text-red-300 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Error al cargar datos</h3>
+                  <p className="text-gray-500">No se pudieron cargar los detalles del usuario.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

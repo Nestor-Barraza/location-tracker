@@ -540,6 +540,40 @@ class PostgresDatabase {
     }
   }
 
+  async getLocationsByUser(username: string): Promise<Location[]> {
+    const client = await this.pool.connect();
+    try {
+      const query = `
+        SELECT user_id, username, latitude, longitude, accuracy, timestamp
+        FROM locations 
+        WHERE username = $1 
+        ORDER BY timestamp DESC
+        LIMIT 100
+      `;
+      const result = await client.query(query, [username]);
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getDevicesByUser(username: string): Promise<Device[]> {
+    const client = await this.pool.connect();
+    try {
+      const query = `
+        SELECT d.device_id, u.username, d.user_agent, d.is_active as tracking_enabled, d.created_at, d.last_seen
+        FROM devices d
+        JOIN users u ON d.user_id = u.id
+        WHERE u.username = $1 
+        ORDER BY d.last_seen DESC
+      `;
+      const result = await client.query(query, [username]);
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
@@ -579,6 +613,8 @@ const userQueries = {
   adminResetUserPassword: database.adminResetUserPassword.bind(database),
   registerDevice: database.registerDevice.bind(database),
   getActiveDevices: database.getActiveDevices.bind(database),
+  getLocationsByUser: database.getLocationsByUser.bind(database),
+  getDevicesByUser: database.getDevicesByUser.bind(database),
   updateDeviceLastSeen: database.updateDeviceLastSeen.bind(database),
   deleteUser: database.deleteUser.bind(database)
 };

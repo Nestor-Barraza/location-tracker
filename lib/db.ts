@@ -5,13 +5,6 @@ interface EventClient {
   on: (event: string, callback: () => void) => void;
 }
 
-interface DeviceCommand {
-  id: string;
-  type: string;
-  payload?: Record<string, unknown>;
-  timestamp: number;
-}
-
 class ServerEventEmitter {
   private clients = new Set<EventClient>();
 
@@ -49,14 +42,9 @@ class ServerEventEmitter {
 }
 
 const eventEmitter = new ServerEventEmitter();
-const deviceCommands = new Map<string, DeviceCommand[]>();
-const connectedDevices = new Map<string, Record<string, unknown>>();
 
 export {
   locationQueries,
   userQueries,
-  eventEmitter,
-  deviceCommands,
-  connectedDevices,
-  type DeviceCommand
+  eventEmitter
 };
