@@ -16,22 +16,20 @@ Los siguientes endpoints están específicamente diseñados para la integración
 - **GET /api/user/tracking-status** - Verificar estado de rastreo del usuario
 
 ### Dispositivos
-- **POST /api/device/register** - Registrar dispositivo móvil en el sistema
 - **GET /api/device/{deviceId}/commands** - Obtener comandos pendientes para el dispositivo
 - **POST /api/device/{deviceId}/status** - Actualizar estado del dispositivo
 - **POST /api/device/command/{commandId}/ack** - Confirmar ejecución de comando
 
 ### Ubicación
-- **POST /api/location** - Enviar datos de ubicación GPS
+- **POST /api/location** - Enviar datos de ubicación GPS. Este endpoint también registra el dispositivo automáticamente si no existe.
 - **GET /api/locations** - Obtener historial de ubicaciones
 
 ## Flujo de Integración Móvil
 
-1. **Registro inicial**: POST /api/device/register
-2. **Autenticación**: POST /api/login
-3. **Verificar permisos**: GET /api/user/tracking-status
-4. **Envío periódico**: POST /api/location
-5. **Verificar comandos**: GET /api/device/{deviceId}/commands
+1. **Autenticación**: POST /api/login
+2. **Verificar permisos**: GET /api/user/tracking-status
+3. **Envío periódico**: POST /api/location (el dispositivo se registra automáticamente en el primer envío)
+4. **Verificar comandos**: GET /api/device/{deviceId}/commands
 
 ## Códigos de Estado
 
@@ -81,7 +79,7 @@ Los siguientes endpoints están específicamente diseñados para la integración
         },
         Location: {
           type: 'object',
-          required: ['user_id', 'username', 'latitude', 'longitude', 'timestamp'],
+          required: ['user_id', 'username', 'latitude', 'longitude', 'timestamp', 'device_id', 'user_agent'],
           properties: {
             user_id: {
               type: 'string',
@@ -90,6 +88,14 @@ Los siguientes endpoints están específicamente diseñados para la integración
             username: {
               type: 'string',
               description: 'Username'
+            },
+            device_id: {
+              type: 'string',
+              description: 'Device identifier'
+            },
+            user_agent: {
+              type: 'string',
+              description: 'Device user agent'
             },
             latitude: {
               type: 'number',
@@ -288,7 +294,7 @@ Los siguientes endpoints están específicamente diseñados para la integración
         post: {
           tags: ['Location'],
           summary: 'Submit location data',
-          description: 'Submit user location data from mobile device',
+          description: 'Submit user location data from mobile device. This endpoint also automatically registers the device if it does not exist.',
           requestBody: {
             required: true,
             content: {
@@ -371,55 +377,7 @@ Los siguientes endpoints están específicamente diseñados para la integración
           }
         }
       },
-      '/api/device/register': {
-        post: {
-          tags: ['Device'],
-          summary: 'Register device',
-          description: 'Register a new mobile device',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['device_id', 'user_id', 'user_agent'],
-                  properties: {
-                    device_id: {
-                      type: 'string'
-                    },
-                    user_id: {
-                      type: 'integer'
-                    },
-                    user_agent: {
-                      type: 'string'
-                    }
-                  }
-                }
-              }
-            }
-          },
-          responses: {
-            200: {
-              description: 'Device registered successfully',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: {
-                        type: 'boolean'
-                      },
-                      device_id: {
-                        type: 'string'
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
+
       '/api/user/tracking-status': {
         get: {
           tags: ['User'],

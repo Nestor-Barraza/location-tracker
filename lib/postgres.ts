@@ -5,6 +5,7 @@ interface Location {
   id: number;
   user_id: string;
   username: string;
+  device_id: string;
   latitude: number;
   longitude: number;
   accuracy: number | null;
@@ -130,6 +131,7 @@ class PostgresDatabase {
           id SERIAL PRIMARY KEY,
           user_id VARCHAR(100) NOT NULL,
           username VARCHAR(50) NOT NULL,
+          device_id VARCHAR(255) NOT NULL,
           latitude DECIMAL(10, 8) NOT NULL,
           longitude DECIMAL(11, 8) NOT NULL,
           accuracy DECIMAL(8, 2),
@@ -211,15 +213,15 @@ class PostgresDatabase {
     }
   }
 
-  async insertLocation(userId: string, username: string, latitude: number, longitude: number, accuracy: number | null, timestamp: number): Promise<{ id: number }> {
+  async insertLocation(userId: string, username: string, latitude: number, longitude: number, accuracy: number | null, timestamp: number, deviceId: string): Promise<{ id: number }> {
     const client = await this.pool.connect();
     try {
       const query = `
-        INSERT INTO locations (user_id, username, latitude, longitude, accuracy, timestamp)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO locations (user_id, username, latitude, longitude, accuracy, timestamp, device_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
       `;
-      const result = await client.query(query, [userId, username, latitude, longitude, accuracy, timestamp]);
+      const result = await client.query(query, [userId, username, latitude, longitude, accuracy, timestamp, deviceId]);
       return result.rows[0];
     } finally {
       client.release();
@@ -230,7 +232,7 @@ class PostgresDatabase {
     const client = await this.pool.connect();
     try {
       const query = `
-        SELECT DISTINCT ON (user_id) user_id, username, latitude, longitude, accuracy, timestamp
+        SELECT DISTINCT ON (user_id) user_id, username, latitude, longitude, accuracy, timestamp, device_id
         FROM locations
         WHERE timestamp > $1
         ORDER BY user_id, timestamp DESC
@@ -246,7 +248,7 @@ class PostgresDatabase {
     const client = await this.pool.connect();
     try {
       const query = `
-        SELECT user_id, username, latitude, longitude, accuracy, timestamp
+        SELECT user_id, username, latitude, longitude, accuracy, timestamp, device_id
         FROM locations
         WHERE timestamp > $1
         ORDER BY timestamp DESC
@@ -269,7 +271,7 @@ class PostgresDatabase {
       
       for (const user of usersResult.rows) {
         const locationQuery = `
-          SELECT latitude, longitude, accuracy, timestamp 
+          SELECT latitude, longitude, accuracy, timestamp, device_id 
           FROM locations 
           WHERE username = $1 OR user_id = $1
           ORDER BY timestamp DESC 
@@ -325,6 +327,7 @@ class PostgresDatabase {
           longitude: location ? Number(location.longitude) : null,
           accuracy: location ? Number(location.accuracy) : null,
           timestamp: location ? location.timestamp : null,
+          device_id: location ? location.device_id : null,
           last_location_time: formattedTime,
           latest_device: {
             device_id: device ? device.device_id : null,
@@ -631,7 +634,7 @@ class PostgresDatabase {
     const client = await this.pool.connect();
     try {
       const query = `
-        SELECT user_id, username, latitude, longitude, accuracy, timestamp
+        SELECT user_id, username, latitude, longitude, accuracy, timestamp, device_id
         FROM locations 
         WHERE username = $1 
         ORDER BY timestamp DESC
