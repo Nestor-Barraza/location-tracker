@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useSSE } from '../hooks/useSSE';
 import { useAuth } from '../context/AuthContext';
-import { FiUsers, FiMap, FiList, FiFilter, FiBarChart2, FiWifi, FiWifiOff, FiTrash2, FiX, FiPlus, FiUserPlus, FiSettings } from 'react-icons/fi';
+import { FiUsers, FiMap, FiList, FiFilter, FiBarChart2, FiWifi, FiWifiOff, FiTrash2, FiX, FiPlus, FiUserPlus, FiKey } from 'react-icons/fi';
 
 const Map = dynamic(() => import('./Map'), {
   ssr: false,
@@ -108,6 +108,8 @@ export default function AdminDashboardSSE() {
   });
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [userMessage, setUserMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [resetPasswordForm, setResetPasswordForm] = useState<{ userId: number; username: string; newPassword: string; confirmPassword: string } | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -134,6 +136,16 @@ export default function AdminDashboardSSE() {
       loadConnectedDevices();
     }
   }, [serverUrl, user]);
+
+  useEffect(() => {
+    if (activeTab === 'tracking' && serverUrl) {
+      const interval = setInterval(() => {
+        loadConnectedDevices();
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, serverUrl]);
 
   const getLocationInfo = async (lat: number, lng: number): Promise<{city: string, country: string}> => {
     try {
@@ -417,6 +429,56 @@ export default function AdminDashboardSSE() {
     }
   }, [userMessage]);
 
+  const handleResetUserPassword = (userId: number, username: string) => {
+    setResetPasswordForm({
+      userId,
+      username,
+      newPassword: '',
+      confirmPassword: ''
+    });
+  };
+
+  const resetUserPassword = async () => {
+    if (!resetPasswordForm) return;
+
+    if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
+      setUserMessage({ type: 'error', text: 'Las contraseñas no coinciden' });
+      return;
+    }
+
+    if (resetPasswordForm.newPassword.length < 6) {
+      setUserMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setUserMessage(null);
+
+    try {
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUserId: resetPasswordForm.userId,
+          newPassword: resetPasswordForm.newPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setUserMessage({ type: 'success', text: data.message });
+        setResetPasswordForm(null);
+      } else {
+        setUserMessage({ type: 'error', text: data.error });
+      }
+    } catch (error) {
+      setUserMessage({ type: 'error', text: 'Error al cambiar la contraseña' });
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const selectedDeviceLocations = selectedDevice 
     ? userLocations.filter(loc => loc.user_id.includes(selectedDevice))
     : [];
@@ -521,25 +583,13 @@ export default function AdminDashboardSSE() {
                           }`}></div>
                           <span className="font-medium text-sm">{device.username}</span>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            device.is_tracking 
-                              ? 'bg-green-500/20 text-green-400' 
-                              : 'bg-gray-500/20 text-gray-400'
-                          }`}>
-                            {device.is_tracking ? 'ACTIVO' : 'OFF'}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation(); 
-                              handleDeleteDevice(device.device_id);
-                            }}
-                            className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-colors"
-                            title="Eliminar dispositivo"
-                          >
-                            <FiTrash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          device.is_tracking 
+                            ? 'bg-green-500/20 text-green-400' 
+                            : 'bg-gray-500/20 text-gray-400'
+                        }`}>
+                          {device.is_tracking ? 'ACTIVO' : 'OFF'}
+                        </span>
                       </div>
                       
                       <div className="text-sm text-black/80">
@@ -807,19 +857,28 @@ export default function AdminDashboardSSE() {
                         })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {userData.role === 'admin' ? (
-                          <span className="text-gray-400" title="Los administradores no se pueden eliminar">
-                            <FiTrash2 className="opacity-30" />
-                          </span>
-                        ) : (
+                        <div className="flex gap-2 justify-end">
                           <button
-                            onClick={() => deleteUser(userData.id)}
-                            className="text-red-600 hover:text-red-900 transition-colors"
-                            title="Eliminar usuario"
+                            onClick={() => handleResetUserPassword(userData.id, userData.username)}
+                            className="text-blue-600 hover:text-blue-900 transition-colors"
+                            title="Cambiar contraseña"
                           >
-                            <FiTrash2 />
+                            <FiKey />
                           </button>
-                        )}
+                          {userData.role === 'admin' ? (
+                            <span className="text-gray-400" title="Los administradores no se pueden eliminar">
+                              <FiTrash2 className="opacity-30" />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => deleteUser(userData.id)}
+                              className="text-red-600 hover:text-red-900 transition-colors"
+                              title="Eliminar usuario"
+                            >
+                              <FiTrash2 />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -834,6 +893,72 @@ export default function AdminDashboardSSE() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Reset Password Modal */}
+      {resetPasswordForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <FiKey className="text-indigo-600 mr-2" />
+              <h3 className="text-lg font-medium text-gray-900">
+                Cambiar contraseña
+              </h3>
+            </div>
+            <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+              <p className="text-sm text-indigo-800">
+                <strong>Usuario:</strong> {resetPasswordForm.username}
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nueva contraseña
+                </label>
+                <input
+                  type="password"
+                  value={resetPasswordForm.newPassword}
+                  onChange={(e) => setResetPasswordForm(prev => prev ? { ...prev, newPassword: e.target.value } : null)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  disabled={isResettingPassword}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirmar nueva contraseña
+                </label>
+                <input
+                  type="password"
+                  value={resetPasswordForm.confirmPassword}
+                  onChange={(e) => setResetPasswordForm(prev => prev ? { ...prev, confirmPassword: e.target.value } : null)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  disabled={isResettingPassword}
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setResetPasswordForm(null)}
+                disabled={isResettingPassword}
+                className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={resetUserPassword}
+                disabled={isResettingPassword || !resetPasswordForm.newPassword || !resetPasswordForm.confirmPassword}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                {isResettingPassword && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+                {isResettingPassword ? 'Cambiando...' : 'Cambiar contraseña'}
+              </button>
             </div>
           </div>
         </div>
