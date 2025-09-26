@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/login/route.ts": {
+      "maxDuration": 10
+    },
+    "app/api/**/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

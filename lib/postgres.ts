@@ -52,12 +52,20 @@ class PostgresDatabase {
   private pool: Pool;
 
   constructor() {
+    // Configuración optimizada para Vercel serverless functions
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      max: 1, // Máximo 1 conexión para funciones serverless
+      idleTimeoutMillis: 30000, // 30 segundos
+      connectionTimeoutMillis: 10000, // 10 segundos
+      allowExitOnIdle: true // Permite que el proceso termine cuando no hay conexiones activas
     });
 
-    this.initDatabase();
+    // Solo inicializar en desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      this.initDatabase();
+    }
   }
 
   async initDatabase(): Promise<void> {
