@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         role: userData.role,
       };
       
-      await userQueries.upsertActiveUser(userData.id, userData.username, userData.role, Date.now());
+      await userQueries.upsertActiveUser(userData.id.toString(), userData.username, userData.role, Date.now());
       
       console.log(`User ${username} logged in successfully (${userData.role})`);
       

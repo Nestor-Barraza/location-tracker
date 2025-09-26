@@ -23,7 +23,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
     
-    const updated = await userQueries.updateUserTracking(userId, tracking_enabled);
+    const updated = await userQueries.updateUserTracking(parseInt(userId), tracking_enabled);
     
     if (updated) {
       console.log(`Admin updated tracking for user ID: ${userId} to ${tracking_enabled}`);
@@ -47,7 +47,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { userId } = params;
     
-    const deleted = await userQueries.deleteUser(userId);
+    const deleted = await userQueries.deleteUser(parseInt(userId));
     
     if (deleted) {
       console.log(`Admin deleted user with ID: ${userId}`);

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    await userQueries.registerDevice(device_id, user.id, user_agent);
+    await userQueries.registerDevice(device_id, user.id, user_agent || 'Unknown');
     
     connectedDevices.set(device_id, {
       device_id,
