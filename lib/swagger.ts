@@ -6,7 +6,41 @@ const options: swaggerJSDoc.Options = {
     info: {
       title: 'Location Tracker API',
       version: '1.0.0',
-      description: 'API for location tracking system with React Native mobile support',
+      description: `
+## Endpoints para Aplicación Móvil
+
+Los siguientes endpoints están específicamente diseñados para la integración con aplicaciones móviles:
+
+### Autenticación
+- **POST /api/login** - Autenticar usuario con credenciales
+- **GET /api/user/tracking-status** - Verificar estado de rastreo del usuario
+
+### Dispositivos
+- **POST /api/device/register** - Registrar dispositivo móvil en el sistema
+- **GET /api/device/{deviceId}/commands** - Obtener comandos pendientes para el dispositivo
+- **POST /api/device/{deviceId}/status** - Actualizar estado del dispositivo
+- **POST /api/device/command/{commandId}/ack** - Confirmar ejecución de comando
+
+### Ubicación
+- **POST /api/location** - Enviar datos de ubicación GPS
+- **GET /api/locations** - Obtener historial de ubicaciones
+
+## Flujo de Integración Móvil
+
+1. **Registro inicial**: POST /api/device/register
+2. **Autenticación**: POST /api/login
+3. **Verificar permisos**: GET /api/user/tracking-status
+4. **Envío periódico**: POST /api/location
+5. **Verificar comandos**: GET /api/device/{deviceId}/commands
+
+## Códigos de Estado
+
+- **200**: Operación exitosa
+- **400**: Datos inválidos o faltantes
+- **401**: No autorizado / Credenciales inválidas
+- **404**: Recurso no encontrado
+- **500**: Error interno del servidor
+      `,
       contact: {
         name: 'API Support',
         email: 'support@locationtracker.com'
@@ -129,6 +163,37 @@ const options: swaggerJSDoc.Options = {
               type: 'integer',
               format: 'int64',
               description: 'Command creation timestamp'
+            }
+          }
+        },
+        DeviceRegistration: {
+          type: 'object',
+          required: ['device_id', 'user_id', 'user_agent'],
+          properties: {
+            device_id: {
+              type: 'string',
+              description: 'Unique device identifier'
+            },
+            user_id: {
+              type: 'integer',
+              description: 'User ID associated with the device'
+            },
+            user_agent: {
+              type: 'string',
+              description: 'Device user agent string'
+            }
+          }
+        },
+        TrackingStatus: {
+          type: 'object',
+          properties: {
+            tracking_enabled: {
+              type: 'boolean',
+              description: 'Whether tracking is enabled for the user'
+            },
+            user_created: {
+              type: 'boolean',
+              description: 'Whether the user was created in this request'
             }
           }
         },
@@ -376,12 +441,151 @@ const options: swaggerJSDoc.Options = {
               content: {
                 'application/json': {
                   schema: {
+                    $ref: '#/components/schemas/TrackingStatus'
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/device/{deviceId}/commands': {
+        get: {
+          tags: ['Device'],
+          summary: 'Get pending commands',
+          description: 'Retrieve pending commands for a specific device',
+          parameters: [
+            {
+              name: 'deviceId',
+              in: 'path',
+              required: true,
+              schema: {
+                type: 'string'
+              },
+              description: 'Device unique identifier'
+            }
+          ],
+          responses: {
+            200: {
+              description: 'Commands retrieved successfully',
+              content: {
+                'application/json': {
+                  schema: {
                     type: 'object',
                     properties: {
-                      tracking_enabled: {
+                      commands: {
+                        type: 'array',
+                        items: {
+                          $ref: '#/components/schemas/DeviceCommand'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/device/{deviceId}/status': {
+        post: {
+          tags: ['Device'],
+          summary: 'Update device status',
+          description: 'Update device connection and tracking status',
+          parameters: [
+            {
+              name: 'deviceId',
+              in: 'path',
+              required: true,
+              schema: {
+                type: 'string'
+              },
+              description: 'Device unique identifier'
+            }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    is_tracking: {
+                      type: 'boolean'
+                    },
+                    is_connected: {
+                      type: 'boolean'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Status updated successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: {
                         type: 'boolean'
-                      },
-                      user_created: {
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/device/command/{commandId}/ack': {
+        post: {
+          tags: ['Device'],
+          summary: 'Acknowledge command execution',
+          description: 'Confirm that a command has been executed by the device',
+          parameters: [
+            {
+              name: 'commandId',
+              in: 'path',
+              required: true,
+              schema: {
+                type: 'string'
+              },
+              description: 'Command unique identifier'
+            }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: {
+                      type: 'string',
+                      enum: ['success', 'error'],
+                      description: 'Execution status'
+                    },
+                    message: {
+                      type: 'string',
+                      description: 'Optional status message'
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Command acknowledged',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: {
                         type: 'boolean'
                       }
                     }
