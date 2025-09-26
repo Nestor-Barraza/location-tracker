@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { userQueries } from '@/lib/postgres.mjs';
+import { userQueries } from '@/lib/postgres';
 
 export const dynamic = 'force-dynamic';
 

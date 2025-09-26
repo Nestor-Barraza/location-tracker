@@ -1,7 +1,9 @@
-import { Pool } from 'pg';
+import { Pool, Client } from 'pg';
 import bcrypt from 'bcrypt';
 
 class PostgresDatabase {
+  private pool: Pool;
+
   constructor() {
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
