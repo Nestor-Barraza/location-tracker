@@ -12,7 +12,7 @@ bun install
 
 1. Crear archivo `.env.local` con tu URL de PostgreSQL:
 ```
-DATABASE_URL=postgresql://usuario:password@localhost:5432/location_tracker
+NEXT_PUBLIC_DATABASE_URL=postgresql://usuario:password@localhost:5432/location_tracker
 ```
 
 ## Uso
