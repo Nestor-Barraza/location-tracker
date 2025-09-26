@@ -48,6 +48,29 @@ interface DeviceRemovedData {
   device_id: string;
 }
 
+interface UserWithDevice {
+  userId: string;
+  username: string;
+  role: string;
+  tracking_enabled: boolean;
+  has_location: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  timestamp: number | null;
+  last_location_time: {
+    timestamp: number;
+    formatted: string;
+    date: string;
+    time: string;
+  } | null;
+  latest_device: {
+    device_id: string | null;
+    user_agent: string | null;
+    last_seen: string | null;
+  };
+}
+
 interface DeleteDeviceError {
   error: string;
   availableDevices?: string[];
@@ -135,6 +158,7 @@ export default function AdminDashboardSSE() {
 
   const [userLocations, setUserLocations] = useState<UserLocation[]>([]);
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
+  const [usersWithDevices, setUsersWithDevices] = useState<UserWithDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
   const [serverUrl, setServerUrl] = useState('');
   const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
@@ -155,6 +179,7 @@ export default function AdminDashboardSSE() {
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<UserDetails['locations'][0] | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithDevice | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -190,6 +215,13 @@ export default function AdminDashboardSSE() {
       
       if (locationsData.locations) {
         setUserLocations(locationsData.locations);
+      }
+
+      const usersWithDevicesResponse = await fetch(`${serverUrl}/api/locations?timeframe=24h&format=users-with-devices`);
+      const usersWithDevicesData = await usersWithDevicesResponse.json();
+      
+      if (usersWithDevicesData.users) {
+        setUsersWithDevices(usersWithDevicesData.users);
       }
 
       const usersResponse = await fetch(`${serverUrl}/api/active-users`);
@@ -607,99 +639,96 @@ export default function AdminDashboardSSE() {
                 )}
               </div>
               <span className="text-sm text-black/60">
-                {devicesWithLocation.length} dispositivos activos
+                {usersWithDevices.length} usuarios registrados
               </span>
             </div>
           </div>
 
-          {/* Layout Principal */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Lista de Dispositivos */}
             <div className="lg:col-span-1">
               <div className="bg-black/20 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/10 p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center">
                   <FiUsers className="mr-3 text-purple-400"/>
-                  Lista de Dispositivos
+                  Usuarios
                 </h3>
                 
                 <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                  {devicesWithLocation.map((device) => (
+                  {usersWithDevices.map((user) => (
                     <div
-                      key={device.device_id}
+                      key={user.userId}
                       className={`p-4 rounded-lg border transition-all cursor-pointer ${
-                        selectedDevice === device.device_id
+                        selectedUser?.userId === user.userId
                           ? 'bg-purple-500/20 border-purple-500/50'
                           : 'bg-black/20 border-white/10 hover:bg-black/30'
                       }`}
-                      onClick={() => setSelectedDevice(device.device_id)}
+                      onClick={() => setSelectedUser(user)}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center">
                           <div className={`w-3 h-3 rounded-full mr-3 ${
-                            device.is_tracking ? 'bg-green-400' : 'bg-red-400'
+                            user.has_location ? 'bg-green-400' : 'bg-orange-400'
                           }`}></div>
-                          <span className="font-medium text-sm">{device.username}</span>
+                          <span className="font-medium text-sm">{user.username}</span>
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          device.is_tracking 
-                            ? 'bg-green-500/20 text-green-400' 
-                            : 'bg-gray-500/20 text-gray-400'
-                        }`}>
-                          {device.is_tracking ? 'ACTIVO' : 'OFF'}
-                        </span>
-                      </div>
-                      
-                      <div className="text-sm text-black/80">
-                        <div className="flex items-center mb-1">
-                          <span className="text-black/60">📍</span>
-                          <span className="ml-2">{device.city}</span>
-                        </div>
-                        <div className="flex items-center mb-2">
-                          <span className="text-black/60">🌍</span>
-                          <span className="ml-2">{device.country}</span>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            user.tracking_enabled 
+                              ? 'bg-green-500/20 text-green-400' 
+                              : 'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {user.tracking_enabled ? 'ON' : 'OFF'}
+                          </span>
+                          {user.has_location && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                              GPS
+                            </span>
+                          )}
                         </div>
                       </div>
                       
-                      {device.lastLocation && (
-                        <div className="mt-3 space-y-2 text-xs">
-                          <div>
-                            <span className="text-black/60 font-medium">Coordenadas:</span>
-                            <div className="font-mono text-green-600 mt-1">
-                              {Number(device.lastLocation.latitude).toFixed(6)}<br />
-                              {Number(device.lastLocation.longitude).toFixed(6)}
-                            </div>
+                      {/* Información básica */}
+                      <div className="mt-2 space-y-2 text-xs">
+                        {/* Último dispositivo */}
+                        {user.latest_device.device_id && (
+                          <div className="flex items-center text-gray-400">
+                            <FiSmartphone className="mr-1" />
+                            <span>Dispositivo: {user.latest_device.device_id.substring(0, 12)}...</span>
                           </div>
-                          <div>
-                            <span className="text-black/60 font-medium">Hora:</span>
-                            <div className="text-blue-600 mt-1">
-                              {new Date(Number(device.lastLocation.timestamp)).toLocaleString('es-ES')}
-                            </div>
+                        )}
+                        
+                        {/* Estado de ubicación */}
+                        {user.has_location ? (
+                          <div className="flex items-center text-green-400">
+                            <FiMapPin className="mr-1" />
+                            <span>Última ubicación: {user.last_location_time?.time}</span>
                           </div>
-                          <div>
-                            <span className="text-black/60 font-medium">Precisión:</span>
-                            <div className="text-purple-600 mt-1">
-                              {device.lastLocation.accuracy 
-                                ? `±${Number(device.lastLocation.accuracy).toFixed(0)}m`
-                                : 'N/A'
-                              }
-                            </div>
+                        ) : (
+                          <div className="flex items-center text-orange-400">
+                            <FiMapPin className="mr-1" />
+                            <span>Sin ubicación reciente</span>
                           </div>
-                        </div>
-                      )}
+                        )}
+                        
+                        {user.latest_device.last_seen && (
+                          <div className="flex items-center text-gray-400">
+                            <FiActivity className="mr-1" />
+                            <span>Último dispositivo activo: {user.latest_device.last_seen}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                   
-                  {devicesWithLocation.length === 0 && (
+                  {usersWithDevices.length === 0 && (
                     <div className="text-center text-black/60 py-8">
-                      <FiWifiOff className="mx-auto text-4xl mb-2" />
-                      <p className="text-black">No hay dispositivos conectados</p>
+                      <FiUsers className="mx-auto text-4xl mb-2" />
+                      <p className="text-black">No hay usuarios registrados</p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Mapa del dispositivo seleccionado */}
             <div className="lg:col-span-2">
               <div className="bg-black/20 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/10 p-6">
                 <div className="flex justify-between items-center mb-4">
@@ -707,7 +736,7 @@ export default function AdminDashboardSSE() {
                     <FiMap className="mr-3 text-purple-400"/>
                     {selectedDevice 
                       ? `Ubicación de ${selectedDeviceData?.username || 'Usuario'}` 
-                      : 'Vista General - Todos los Dispositivos'}
+                      : 'Vista General'}
                   </h3>
                   <div className="flex items-center gap-3">
                     {selectedDevice && (
@@ -728,70 +757,86 @@ export default function AdminDashboardSSE() {
                 </div>
                 
                 <div className="h-[500px] rounded-lg overflow-hidden">
-                  {devicesWithLocation.length > 0 ? (
-                    <Map 
-                      locations={selectedDevice && selectedDeviceLocations.length > 0 
-                        ? selectedDeviceLocations.map(loc => ({
-                            id: loc.user_id,
-                            userId: loc.username,
-                            latitude: loc.latitude,
-                            longitude: loc.longitude,
-                            timestamp: new Date(Number(loc.timestamp)),
-                            accuracy: loc.accuracy
-                          }))
-                        : devicesWithLocation
-                            .filter(device => device.lastLocation)
-                            .map(device => ({
-                              id: device.device_id,
-                              userId: device.username,
-                              latitude: device.lastLocation!.latitude,
-                              longitude: device.lastLocation!.longitude,
-                              timestamp: new Date(Number(device.lastLocation!.timestamp)),
-                              accuracy: device.lastLocation!.accuracy
-                            }))
-                      } 
-                      zoom={selectedDevice && selectedDeviceLocations.length > 0 ? 15 : 4}
-                    />
+                  {usersWithDevices.length > 0 ? (
+                    <div className="w-full h-full relative">
+                      <Map 
+                        key={selectedUser ? `user-${selectedUser.userId}` : 'all-users'}
+                        locations={selectedUser && selectedUser.has_location
+                          ? [{
+                              id: selectedUser.userId,
+                              userId: selectedUser.username,
+                              latitude: selectedUser.latitude!,
+                              longitude: selectedUser.longitude!,
+                              timestamp: selectedUser.timestamp ? new Date(Number(selectedUser.timestamp) * 1000) : new Date(),
+                              accuracy: selectedUser.accuracy || undefined
+                            }]
+                          : usersWithDevices
+                              .filter(user => user.has_location && user.latitude && user.longitude)
+                              .map(user => ({
+                                id: user.userId,
+                                userId: user.username,
+                                latitude: user.latitude!,
+                                longitude: user.longitude!,
+                                timestamp: user.timestamp ? new Date(Number(user.timestamp) * 1000) : new Date(),
+                                accuracy: user.accuracy || undefined
+                              }))
+                        } 
+                        zoom={selectedUser && selectedUser.has_location ? 15 : 4}
+                      />
+                    </div>
                   ) : (
                     <div className="h-full bg-gradient-to-br from-blue-900/50 to-purple-900/50 rounded-lg flex items-center justify-center">
                       <div className="text-center text-black/60">
                         <FiMap className="mx-auto text-6xl mb-4" />
-                        <h3 className="text-xl font-medium mb-2 text-black">Sin dispositivos</h3>
-                        <p className="text-black">No hay dispositivos conectados con ubicación</p>
+                        <h3 className="text-xl font-medium mb-2 text-black">Sin usuarios</h3>
+                        <p className="text-black">No hay usuarios con ubicación disponible</p>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Información detallada */}
-                {selectedDevice && selectedDeviceData && selectedDeviceData.lastLocation ? (
+                {selectedUser && selectedUser.has_location ? (
                   <div className="mt-4 p-4 bg-black/30 rounded-lg">
-                    <h4 className="font-medium mb-2 text-black">Información detallada:</h4>
+                    <h4 className="font-medium mb-2 text-black">Información del usuario: {selectedUser.username}</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="text-black/60">Coordenadas:</span>
                         <p className="font-mono text-green-400">
-                          {Number(selectedDeviceData.lastLocation.latitude).toFixed(6)}, {Number(selectedDeviceData.lastLocation.longitude).toFixed(6)}
+                          {selectedUser.latitude?.toFixed(6)}, {selectedUser.longitude?.toFixed(6)}
                         </p>
                       </div>
                       <div>
                         <span className="text-black/60">Precisión:</span>
                         <p className="text-purple-400">
-                          {selectedDeviceData.lastLocation.accuracy 
-                            ? `±${Number(selectedDeviceData.lastLocation.accuracy).toFixed(0)}m`
+                          {selectedUser.accuracy 
+                            ? `±${Number(selectedUser.accuracy).toFixed(0)}m`
                             : 'N/A'
                           }
                         </p>
                       </div>
                       <div>
-                        <span className="text-black/60">Ciudad:</span>
-                        <p className="text-blue-400">{selectedDeviceData.city}</p>
+                        <span className="text-black/60">Última actualización:</span>
+                        <p className="text-blue-400">
+                          {selectedUser.last_location_time?.formatted || 'N/A'}
+                        </p>
                       </div>
                       <div>
-                        <span className="text-black/60">País:</span>
-                        <p className="text-blue-400">{selectedDeviceData.country}</p>
+                        <span className="text-black/60">Dispositivo:</span>
+                        <p className="text-blue-400">
+                          {selectedUser.latest_device?.device_id || 'N/A'}
+                        </p>
                       </div>
                     </div>
+                    <div className="mt-3 pt-3 border-t border-black/20">
+                     
+                    </div>
+                  </div>
+                ) : selectedUser ? (
+                  <div className="mt-4 p-4 bg-black/30 rounded-lg">
+                    <h4 className="font-medium mb-2 text-black">Usuario: {selectedUser.username}</h4>
+                    <p className="text-black/60 mb-3">Este usuario no tiene ubicación disponible.</p>
+                    
                   </div>
                 ) : null}
               </div>

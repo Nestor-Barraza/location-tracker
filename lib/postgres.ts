@@ -258,6 +258,93 @@ class PostgresDatabase {
     }
   }
 
+  async getUsersWithLatestDeviceAndLocation(minTimestamp: number): Promise<any[]> {
+    const client = await this.pool.connect();
+    try {
+      const usersQuery = "SELECT id, username, role FROM users WHERE role != 'admin' OR role IS NULL";
+      const usersResult = await client.query(usersQuery);
+      console.log('DEBUG - Found users:', usersResult.rows.length);
+      
+      const usersWithData = [];
+      
+      for (const user of usersResult.rows) {
+        const locationQuery = `
+          SELECT latitude, longitude, accuracy, timestamp 
+          FROM locations 
+          WHERE username = $1 OR user_id = $1
+          ORDER BY timestamp DESC 
+          LIMIT 1
+        `;
+        const locationResult = await client.query(locationQuery, [user.username]);
+        
+        // Obtener último dispositivo
+        const deviceQuery = `
+          SELECT device_id, user_agent, last_seen
+          FROM devices 
+          WHERE user_id = $1
+          ORDER BY last_seen DESC 
+          LIMIT 1
+        `;
+        const deviceResult = await client.query(deviceQuery, [user.id]);
+        
+        const location = locationResult.rows[0];
+        const device = deviceResult.rows[0];
+        
+        // Formatear timestamp si existe
+        let formattedTime = null;
+        if (location && location.timestamp) {
+          let timestamp = location.timestamp;
+          if (timestamp > 2147483647) {
+            timestamp = Math.floor(timestamp / 1000);
+          }
+          
+          let date;
+          if (timestamp > 2147483647) {
+            date = new Date(timestamp / 1000);
+          } else if (timestamp < 1000000000) {
+            date = new Date();
+          } else {
+            date = new Date(timestamp * 1000);
+          }
+          
+          formattedTime = {
+            timestamp: timestamp,
+            formatted: date.toLocaleString(),
+            date: date.toLocaleDateString(),
+            time: date.toLocaleTimeString()
+          };
+        }
+        
+        usersWithData.push({
+          userId: user.username,
+          username: user.username,
+          role: user.role || 'user',
+          tracking_enabled: true,
+          has_location: !!location,
+          latitude: location ? Number(location.latitude) : null,
+          longitude: location ? Number(location.longitude) : null,
+          accuracy: location ? Number(location.accuracy) : null,
+          timestamp: location ? location.timestamp : null,
+          last_location_time: formattedTime,
+          latest_device: {
+            device_id: device ? device.device_id : null,
+            user_agent: device ? device.user_agent : null,
+            last_seen: device ? new Date(device.last_seen).toLocaleString() : null
+          }
+        });
+      }
+      
+      console.log('DEBUG - Users with data:', usersWithData.length);
+      return usersWithData;
+      
+    } catch (error) {
+      console.error('ERROR in getUsersWithLatestDeviceAndLocation:', error);
+      return [];
+    } finally {
+      client.release();
+    }
+  }
+
   async upsertActiveUser(userId: string, username: string, role: string, lastActive: number): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -597,7 +684,8 @@ const eventEmitter = new EventEmitter();
 const locationQueries = {
   insertLocation: database.insertLocation.bind(database),
   getLatestUserLocations: database.getLatestUserLocations.bind(database),
-  getAllLocationsInTimeframe: database.getAllLocationsInTimeframe.bind(database)
+  getAllLocationsInTimeframe: database.getAllLocationsInTimeframe.bind(database),
+  getUsersWithLatestDeviceAndLocation: database.getUsersWithLatestDeviceAndLocation.bind(database)
 };
 
 const userQueries = {
