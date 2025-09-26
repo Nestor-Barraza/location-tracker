@@ -3,14 +3,6 @@ import { userQueries } from '@/lib/postgres';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return NextResponse.json({ 
-    message: 'Login endpoint is working',
-    methods: ['POST'],
-    timestamp: new Date().toISOString()
-  });
-}
-
 interface LoginRequest {
   username: string;
   password: string;
